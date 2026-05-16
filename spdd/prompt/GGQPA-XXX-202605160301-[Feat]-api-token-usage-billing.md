@@ -31,7 +31,6 @@ class CustomerSubscription {
     +LocalDate effectiveFrom
     +LocalDate effectiveTo
     +LocalDateTime createdAt
-    +boolean isActiveOn(LocalDate date)
 }
 
 class Bill {
@@ -50,7 +49,6 @@ class UsageRequest {
     +String customerId
     +Integer promptTokens
     +Integer completionTokens
-    +Integer totalTokens()
 }
 
 class BillingCalculation {
@@ -188,10 +186,6 @@ Only the first three items are application layers; the remaining items are suppo
    - `Bill.calculatedAt`: `LocalDateTime` - calculation timestamp in UTC local date-time representation.
 4. Methods:
    - Domain constructors or factories validate only domain invariants that do not depend on HTTP or database concerns.
-   - `isActiveOn(LocalDate date): boolean`
-     - Logic:
-       - Return true when `effectiveFrom` is on or before `date`.
-       - Return true only when `effectiveTo` is null or on/after `date`.
    - `static create(Customer customer, Integer promptTokens, Integer completionTokens, BillingCalculation calculation, LocalDateTime calculatedAt): Bill`
      - Logic:
        - Generate a UUID.
@@ -251,10 +245,6 @@ Only the first three items are application layers; the remaining items are suppo
    - `ErrorResponse.timestamp`: `Instant` - error response timestamp.
    - `ErrorResponse.path`: `String` - request path.
 4. Methods:
-   - `UsageRequest.totalTokens(): Integer`
-     - Logic:
-       - Add prompt and completion tokens after null and negative validation.
-       - Reject totals greater than `Integer.MAX_VALUE`.
    - `BillResponse.from(Bill bill): BillResponse`
      - Logic:
        - Map persisted bill fields to response fields.
@@ -293,9 +283,6 @@ Only the first three items are application layers; the remaining items are suppo
    - `CustomerPersistenceMapper.toDomain(CustomerPO po): Customer`
      - Logic:
        - Convert table-mapped customer state into a pure domain customer.
-   - `CustomerPersistenceMapper.toPO(Customer customer): CustomerPO`
-     - Logic:
-       - Convert domain customer state into a persistence object when required by adapter operations.
    - `PricingPlanPersistenceMapper.toDomain(PricingPlanPO po): PricingPlan`
      - Logic:
        - Preserve quota and rate values exactly.

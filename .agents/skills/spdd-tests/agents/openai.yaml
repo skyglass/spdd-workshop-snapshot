@@ -1,0 +1,6 @@
+interface:
+  display_name: "SPDD Tests"
+  short_description: "Generate SPDD unit and integration tests from a feature prompt"
+  default_prompt: "$spdd-tests @./spdd/prompt/GGQPA-XXX-{timestamp}-[Feat]-api-token-usage-billing.md"
+policy:
+  allow_implicit_invocation: false
