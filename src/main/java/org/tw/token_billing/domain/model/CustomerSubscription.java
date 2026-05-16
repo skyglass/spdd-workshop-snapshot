@@ -20,9 +20,4 @@ public record CustomerSubscription(
         Objects.requireNonNull(effectiveFrom, "effectiveFrom must not be null");
         Objects.requireNonNull(createdAt, "createdAt must not be null");
     }
-
-    public boolean isActiveOn(LocalDate date) {
-        Objects.requireNonNull(date, "date must not be null");
-        return !effectiveFrom.isAfter(date) && (effectiveTo == null || !effectiveTo.isBefore(date));
-    }
 }

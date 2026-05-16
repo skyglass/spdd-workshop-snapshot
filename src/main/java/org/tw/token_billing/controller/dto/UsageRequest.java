@@ -9,11 +9,4 @@ public record UsageRequest(
         @NotNull @Min(value = 0, message = "Token count cannot be negative") Integer promptTokens,
         @NotNull @Min(value = 0, message = "Token count cannot be negative") Integer completionTokens
 ) {
-    public Integer totalTokens() {
-        long total = (long) promptTokens + completionTokens;
-        if (total > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException("Token total exceeds supported limit");
-        }
-        return (int) total;
-    }
 }

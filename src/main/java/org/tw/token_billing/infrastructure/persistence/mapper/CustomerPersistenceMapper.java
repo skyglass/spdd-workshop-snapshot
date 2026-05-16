@@ -9,8 +9,4 @@ public class CustomerPersistenceMapper {
     public Customer toDomain(CustomerPO po) {
         return new Customer(po.getId(), po.getName(), po.getCreatedAt());
     }
-
-    public CustomerPO toPO(Customer customer) {
-        return new CustomerPO(customer.id(), customer.name(), customer.createdAt());
-    }
 }

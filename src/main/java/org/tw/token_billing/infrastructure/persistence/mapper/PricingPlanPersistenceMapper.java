@@ -15,14 +15,4 @@ public class PricingPlanPersistenceMapper {
                 po.getCreatedAt()
         );
     }
-
-    public PricingPlanPO toPO(PricingPlan pricingPlan) {
-        return new PricingPlanPO(
-                pricingPlan.id(),
-                pricingPlan.name(),
-                pricingPlan.monthlyQuota(),
-                pricingPlan.overageRatePer1k(),
-                pricingPlan.createdAt()
-        );
-    }
 }

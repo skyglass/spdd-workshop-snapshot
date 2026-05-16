@@ -27,15 +27,4 @@ public class CustomerSubscriptionPersistenceMapper {
                 po.getCreatedAt()
         );
     }
-
-    public CustomerSubscriptionPO toPO(CustomerSubscription subscription) {
-        return new CustomerSubscriptionPO(
-                subscription.id(),
-                customerMapper.toPO(subscription.customer()),
-                pricingPlanMapper.toPO(subscription.pricingPlan()),
-                subscription.effectiveFrom(),
-                subscription.effectiveTo(),
-                subscription.createdAt()
-        );
-    }
 }
