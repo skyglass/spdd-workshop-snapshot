@@ -54,6 +54,9 @@ class UsageRequest {
 }
 
 class BillingCalculation {
+    -int TOKENS_PER_PRICING_UNIT
+    -int CALCULATION_PRECISION_SCALE
+    -int CURRENCY_SCALE
     +Integer totalTokens
     +Integer tokensFromQuota
     +Integer overageTokens
@@ -116,7 +119,7 @@ Bill --> BillResponse : maps to
    - Calculate remaining quota as `max(monthlyQuota - currentMonthUsage, 0)`.
    - Calculate tokens from quota as `min(totalTokens, remainingQuota)`.
    - Calculate overage tokens as `totalTokens - tokensFromQuota`.
-   - Calculate charge as `overageTokens * overageRatePer1k / 1000`, prorated per token, rounded to 2 decimal places with `HALF_UP`.
+   - Calculate charge as `overageTokens * overageRatePer1k / TOKENS_PER_PRICING_UNIT`, prorated per token, rounded to `CURRENCY_SCALE` decimal places with `HALF_UP`.
    - Allow zero-token submissions because the requirement permits token counts greater than or equal to zero; they create a zero-charge bill.
 
 ## Structure
@@ -210,14 +213,20 @@ Only the first three items are application layers; the remaining items are suppo
    - `tokensFromQuota`: `Integer` - portion covered by remaining quota.
    - `overageTokens`: `Integer` - portion billed at overage rate.
    - `totalCharge`: `BigDecimal` - rounded charge.
-4. Methods:
+4. Constants:
+   - `TOKENS_PER_PRICING_UNIT = 1000`: divisor used to convert overage tokens into billable per-1K pricing units.
+   - `CALCULATION_PRECISION_SCALE = 10`: intermediate scale used when dividing overage tokens by the pricing unit.
+   - `CURRENCY_SCALE = 2`: final monetary scale used for persisted and returned charges.
+5. Methods:
    - `static calculate(Integer totalTokens, long currentMonthUsage, Integer monthlyQuota, BigDecimal overageRatePer1k): BillingCalculation`
      - Logic:
        - Compute remaining quota as `max(monthlyQuota - currentMonthUsage, 0)`.
        - Compute quota tokens as the smaller of submitted tokens and remaining quota.
        - Compute overage tokens as submitted tokens minus quota tokens.
-       - Compute charge by prorating the per-1K rate per token and round to scale 2 using `HALF_UP`.
-5. Constraints:
+       - Compute billable token units by dividing overage tokens by `TOKENS_PER_PRICING_UNIT` using `CALCULATION_PRECISION_SCALE` and `HALF_UP`.
+       - Multiply billable token units by `overageRatePer1k`.
+       - Round the final charge to `CURRENCY_SCALE` using `HALF_UP`.
+6. Constraints:
    - Use `BigDecimal` for all monetary arithmetic.
    - Use `long` for intermediate quota and usage arithmetic to avoid overflow.
    - Keep this object free of Spring and JPA annotations.
@@ -577,8 +586,9 @@ Only the first three items are application layers; the remaining items are suppo
 5. Monetary Calculation:
    - Use `BigDecimal` for rates and charges.
    - Never use floating point arithmetic for billing.
-   - Prorate overage rate per token from the per-1K rate.
-   - Persist and return charge rounded to scale 2 with `RoundingMode.HALF_UP`.
+   - Prorate overage rate per token from the per-1K rate using `TOKENS_PER_PRICING_UNIT = 1000`.
+   - Use `CALCULATION_PRECISION_SCALE = 10` for intermediate billable token-unit division.
+   - Persist and return charge rounded to `CURRENCY_SCALE = 2` with `RoundingMode.HALF_UP`.
 
 6. Persistence:
    - Keep persistence object mappings aligned with the existing Flyway schema because Hibernate is configured with `ddl-auto: validate`.

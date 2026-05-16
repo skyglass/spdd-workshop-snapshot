@@ -10,6 +10,10 @@ public record BillingCalculation(
         Integer overageTokens,
         BigDecimal totalCharge
 ) {
+    private static final int TOKENS_PER_PRICING_UNIT = 1000;
+    private static final int CALCULATION_PRECISION_SCALE = 10;
+    private static final int CURRENCY_SCALE = 2;
+
     public BillingCalculation {
         Objects.requireNonNull(totalTokens, "totalTokens must not be null");
         Objects.requireNonNull(tokensFromQuota, "tokensFromQuota must not be null");
@@ -30,9 +34,11 @@ public record BillingCalculation(
         long remainingQuota = Math.max(monthlyQuota.longValue() - currentMonthUsage, 0L);
         int tokensFromQuota = (int) Math.min(totalTokens.longValue(), remainingQuota);
         int overageTokens = totalTokens - tokensFromQuota;
-        BigDecimal totalCharge = BigDecimal.valueOf(overageTokens)
+        BigDecimal billableTokenUnits = BigDecimal.valueOf(overageTokens)
+                .divide(BigDecimal.valueOf(TOKENS_PER_PRICING_UNIT), CALCULATION_PRECISION_SCALE, RoundingMode.HALF_UP);
+        BigDecimal totalCharge = billableTokenUnits
                 .multiply(overageRatePer1k)
-                .divide(BigDecimal.valueOf(1000), 2, RoundingMode.HALF_UP);
+                .setScale(CURRENCY_SCALE, RoundingMode.HALF_UP);
 
         return new BillingCalculation(totalTokens, tokensFromQuota, overageTokens, totalCharge);
     }
