@@ -3,8 +3,8 @@ package org.tw.token_billing.repository;
 import org.tw.token_billing.domain.model.CustomerSubscription;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Optional;
 
 public interface CustomerSubscriptionRepository {
-    List<CustomerSubscription> findActiveSubscriptions(String customerId, LocalDate date);
+    Optional<CustomerSubscription> findActiveSubscription(String customerId, LocalDate date);
 }

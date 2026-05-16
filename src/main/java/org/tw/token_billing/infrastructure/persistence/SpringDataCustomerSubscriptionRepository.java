@@ -6,10 +6,10 @@ import org.springframework.data.repository.query.Param;
 import org.tw.token_billing.infrastructure.persistence.entity.CustomerSubscriptionPO;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-public interface CustomerSubscriptionJpaRepository extends JpaRepository<CustomerSubscriptionPO, UUID> {
+public interface SpringDataCustomerSubscriptionRepository extends JpaRepository<CustomerSubscriptionPO, UUID> {
     @Query("""
             select cs
             from CustomerSubscriptionPO cs
@@ -18,9 +18,8 @@ public interface CustomerSubscriptionJpaRepository extends JpaRepository<Custome
             where cs.customer.id = :customerId
               and cs.effectiveFrom <= :date
               and (cs.effectiveTo is null or cs.effectiveTo >= :date)
-            order by cs.effectiveFrom desc
             """)
-    List<CustomerSubscriptionPO> findActiveSubscriptions(
+    Optional<CustomerSubscriptionPO> findActiveSubscription(
             @Param("customerId") String customerId,
             @Param("date") LocalDate date
     );

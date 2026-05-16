@@ -22,10 +22,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
 
 @Service
-public class BillingService implements UsageService {
+public class BillingServiceImpl implements UsageService {
     private static final String TOKEN_TOTAL_TOO_LARGE = "Token total exceeds supported limit";
 
     private final CustomerRepository customerRepository;
@@ -33,7 +32,7 @@ public class BillingService implements UsageService {
     private final BillRepository billRepository;
     private final Clock clock;
 
-    public BillingService(
+    public BillingServiceImpl(
             CustomerRepository customerRepository,
             CustomerSubscriptionRepository customerSubscriptionRepository,
             BillRepository billRepository,
@@ -59,12 +58,8 @@ public class BillingService implements UsageService {
         Customer customer = customerRepository.findByIdForUpdate(request.customerId())
                 .orElseThrow(CustomerNotFoundException::new);
 
-        List<CustomerSubscription> activeSubscriptions = customerSubscriptionRepository.findActiveSubscriptions(
-                customer.id(),
-                currentDate
-        );
-        CustomerSubscription activeSubscription = activeSubscriptions.stream()
-                .findFirst()
+        CustomerSubscription activeSubscription = customerSubscriptionRepository
+                .findActiveSubscription(customer.id(), currentDate)
                 .orElseThrow(() -> new NoActiveSubscriptionException(customer.id()));
 
         long currentMonthUsage = billRepository.sumTotalTokensForCustomerBetween(

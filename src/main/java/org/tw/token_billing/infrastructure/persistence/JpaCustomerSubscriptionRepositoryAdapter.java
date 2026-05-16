@@ -6,26 +6,24 @@ import org.tw.token_billing.infrastructure.persistence.mapper.CustomerSubscripti
 import org.tw.token_billing.repository.CustomerSubscriptionRepository;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class JpaCustomerSubscriptionRepositoryAdapter implements CustomerSubscriptionRepository {
-    private final CustomerSubscriptionJpaRepository customerSubscriptionJpaRepository;
+    private final SpringDataCustomerSubscriptionRepository customerSubscriptionRepository;
     private final CustomerSubscriptionPersistenceMapper customerSubscriptionMapper;
 
     public JpaCustomerSubscriptionRepositoryAdapter(
-            CustomerSubscriptionJpaRepository customerSubscriptionJpaRepository,
+            SpringDataCustomerSubscriptionRepository customerSubscriptionRepository,
             CustomerSubscriptionPersistenceMapper customerSubscriptionMapper
     ) {
-        this.customerSubscriptionJpaRepository = customerSubscriptionJpaRepository;
+        this.customerSubscriptionRepository = customerSubscriptionRepository;
         this.customerSubscriptionMapper = customerSubscriptionMapper;
     }
 
     @Override
-    public List<CustomerSubscription> findActiveSubscriptions(String customerId, LocalDate date) {
-        return customerSubscriptionJpaRepository.findActiveSubscriptions(customerId, date)
-                .stream()
-                .map(customerSubscriptionMapper::toDomain)
-                .toList();
+    public Optional<CustomerSubscription> findActiveSubscription(String customerId, LocalDate date) {
+        return customerSubscriptionRepository.findActiveSubscription(customerId, date)
+                .map(customerSubscriptionMapper::toDomain);
     }
 }

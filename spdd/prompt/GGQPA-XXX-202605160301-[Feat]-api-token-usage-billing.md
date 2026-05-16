@@ -112,7 +112,7 @@ Bill --> BillResponse : maps to
 4. Business Logic:
    - Calculate `totalTokens` as `promptTokens + completionTokens`.
    - Determine the current UTC month window as `[first day of current month 00:00, first day of next month 00:00)`.
-   - Select the active subscription where `effectiveFrom <= currentDate` and `effectiveTo` is null or `effectiveTo >= currentDate`; if multiple match, use the one with the latest `effectiveFrom`.
+   - Select the active subscription where `effectiveFrom <= currentDate` and `effectiveTo` is null or `effectiveTo >= currentDate`; only one active subscription is allowed for a customer at a given date.
    - Calculate remaining quota as `max(monthlyQuota - currentMonthUsage, 0)`.
    - Calculate tokens from quota as `min(totalTokens, remainingQuota)`.
    - Calculate overage tokens as `totalTokens - tokensFromQuota`.
@@ -126,14 +126,14 @@ Bill --> BillResponse : maps to
 2. `CustomerNotFoundException` extends `BusinessException` for missing customer business failures.
 3. `NoActiveSubscriptionException` extends `BusinessException` for customers that exist but cannot be billed because no active subscription is available.
 4. `UsageService` interface defines the usage billing use case consumed by controllers.
-5. `BillingService` implements `UsageService` and contains application business orchestration.
+5. `BillingServiceImpl` implements `UsageService` and contains application business orchestration.
 6. Domain models are pure Java objects with no JPA annotations, Spring annotations, or framework base classes.
 7. Persistence objects use the `PO` suffix and are the only table-mapped classes.
 8. Repository adapters implement domain repository interfaces and delegate to Spring Data JPA repositories.
 
 ### Dependencies
-1. `UsageController` injects the `UsageService` interface, not `BillingService` directly.
-2. `BillingService` injects `CustomerRepository`, `CustomerSubscriptionRepository`, `BillRepository`, and `Clock`; these repositories are domain-facing interfaces under `repository`.
+1. `UsageController` injects the `UsageService` interface, not `BillingServiceImpl` directly.
+2. `BillingServiceImpl` injects `CustomerRepository`, `CustomerSubscriptionRepository`, `BillRepository`, and `Clock`; these repositories are domain-facing interfaces under `repository`.
 3. Services must not depend on Spring Data JPA repositories or persistence objects.
 4. `CustomerRepository`, `CustomerSubscriptionRepository`, and `BillRepository` expose domain-oriented methods and return domain models or domain values.
 5. `JpaCustomerRepositoryAdapter`, `JpaCustomerSubscriptionRepositoryAdapter`, and `JpaBillRepositoryAdapter` live under `infrastructure/persistence` and implement the corresponding repository interfaces.
@@ -314,10 +314,10 @@ Only the first three items are application layers; the remaining items are suppo
    - `CustomerRepository.findByIdForUpdate(String id): Optional<Customer>`
      - Logic:
        - Use pessimistic write locking for the customer row during billing.
-   - `CustomerSubscriptionRepository.findActiveSubscriptions(String customerId, LocalDate date): List<CustomerSubscription>`
+   - `CustomerSubscriptionRepository.findActiveSubscription(String customerId, LocalDate date): Optional<CustomerSubscription>`
      - Logic:
-       - Fetch subscriptions with pricing plan where the date falls inside the effective range.
-       - Order by `effectiveFrom` descending.
+       - Fetch the single active subscription with pricing plan where the date falls inside the effective range.
+       - Return empty when no active subscription exists.
    - `BillRepository.sumTotalTokensForCustomerBetween(String customerId, LocalDateTime startInclusive, LocalDateTime endExclusive): Long`
      - Logic:
        - Sum `totalTokens` for the customer in the current month window.
@@ -332,7 +332,7 @@ Only the first three items are application layers; the remaining items are suppo
    - Repository interfaces must not expose persistence objects.
    - Services depend on these interfaces only.
 
-### Create Spring Data Repositories - CustomerJpaRepository, CustomerSubscriptionJpaRepository, BillJpaRepository
+### Create Spring Data Repositories - CustomerJpaRepository, SpringDataCustomerSubscriptionRepository, BillJpaRepository
 1. Responsibility: Provide Spring Data JPA access to persistence objects for repository adapters.
 2. Location:
    - Place Spring Data repositories under `infrastructure/persistence`.
@@ -343,10 +343,10 @@ Only the first three items are application layers; the remaining items are suppo
    - `CustomerJpaRepository.findByIdForUpdate(String id): Optional<CustomerPO>`
      - Logic:
        - Use pessimistic write locking for the customer row during billing.
-   - `CustomerSubscriptionJpaRepository.findActiveSubscriptions(String customerId, LocalDate date): List<CustomerSubscriptionPO>`
+   - `SpringDataCustomerSubscriptionRepository.findActiveSubscription(String customerId, LocalDate date): Optional<CustomerSubscriptionPO>`
      - Logic:
-       - Query active subscriptions where the effective date range contains the given date and fetch the pricing plan needed for billing.
-       - Order by `effectiveFrom` descending.
+       - Query the active subscription where the effective date range contains the given date and fetch the pricing plan needed for billing.
+       - Return empty when no active subscription exists.
    - `BillJpaRepository.sumTotalTokensForCustomerBetween(String customerId, LocalDateTime startInclusive, LocalDateTime endExclusive): Long`
      - Logic:
        - Sum bill `totalTokens` for the customer in the current month window.
@@ -372,10 +372,10 @@ Only the first three items are application layers; the remaining items are suppo
      - Logic:
        - Delegate to the locked Spring Data lookup.
        - Map `CustomerPO` to `Customer`.
-   - `JpaCustomerSubscriptionRepositoryAdapter.findActiveSubscriptions(String customerId, LocalDate date): List<CustomerSubscription>`
+   - `JpaCustomerSubscriptionRepositoryAdapter.findActiveSubscription(String customerId, LocalDate date): Optional<CustomerSubscription>`
      - Logic:
-       - Delegate to `CustomerSubscriptionJpaRepository`.
-       - Map each `CustomerSubscriptionPO` to `CustomerSubscription`.
+       - Delegate to `SpringDataCustomerSubscriptionRepository`.
+       - Map the returned `CustomerSubscriptionPO` to one `CustomerSubscription` when present.
    - `JpaBillRepositoryAdapter.sumTotalTokensForCustomerBetween(String customerId, LocalDateTime startInclusive, LocalDateTime endExclusive): Long`
      - Logic:
        - Delegate to `BillJpaRepository`.
@@ -403,7 +403,7 @@ Only the first three items are application layers; the remaining items are suppo
    - Controllers depend on this interface only.
    - The interface must not expose infrastructure persistence types.
 
-### Implement Service - BillingService
+### Implement Service - BillingServiceImpl
 1. Responsibility: Orchestrate validation, customer locking, subscription selection, current usage lookup, calculation, persistence, and response mapping.
 2. Location:
    - Place the implementation under `service` or `service/impl`, while keeping the `UsageService` interface under `service`.
@@ -417,9 +417,8 @@ Only the first three items are application layers; the remaining items are suppo
        - Derive current UTC date and current month start/end.
        - Load customer using `findByIdForUpdate`.
        - If missing, throw `CustomerNotFoundException`.
-       - Load active subscriptions for the customer and current date.
-       - If none exist, throw `NoActiveSubscriptionException`.
-       - Use the first subscription ordered by latest `effectiveFrom`.
+       - Load the active subscription for the customer and current date by calling `findActiveSubscription(...).orElseThrow(...)`.
+       - If none exists, throw `NoActiveSubscriptionException`.
        - Read pricing plan quota and overage rate from that subscription.
        - Sum current-month usage from existing bills.
        - Calculate quota tokens, overage tokens, and total charge.
@@ -452,7 +451,7 @@ Only the first three items are application layers; the remaining items are suppo
 4. Constraints:
    - Do not add GET, PUT, DELETE, customer CRUD, or historical bill endpoints.
    - Do not perform billing logic in the controller.
-   - Inject `UsageService`, not `BillingService`.
+   - Inject `UsageService`, not `BillingServiceImpl`.
 
 ### Create Exceptions - BusinessException, CustomerNotFoundException, NoActiveSubscriptionException
 1. Responsibility: Represent expected business failures with stable status codes and messages.
@@ -602,6 +601,7 @@ Only the first three items are application layers; the remaining items are suppo
 3. Business Rule Constraints:
    - Customer quota and overage rate come from the active pricing plan, not from the customer table.
    - Active subscription is selected using UTC current date.
+   - Only one active subscription is allowed for a customer at a given UTC date.
    - Current-month usage is calculated from persisted bills whose `calculatedAt` is within the current UTC calendar month.
    - Zero-token submissions are valid and create zero-charge bills.
    - Duplicate submissions are not deduplicated because no idempotency key is in scope.
