@@ -407,20 +407,20 @@ Only the first three items are application layers; the remaining items are suppo
 1. Responsibility: Orchestrate validation, customer locking, subscription selection, current usage lookup, calculation, persistence, and response mapping.
 2. Location:
    - Place the implementation under `service` or `service/impl`, while keeping the `UsageService` interface under `service`.
-3. Core Method:
+3. Core Methods:
    - `submitUsage(UsageRequest request): BillResponse`
+     - Logic:
+       - Delegate to private `calculateBill(request)`.
+       - Preserve the public service interface contract while keeping billing orchestration in one private method.
+   - `calculateBill(UsageRequest request): BillResponse`
      - Input Validation:
-       - Assume bean validation has checked missing and negative values.
-       - Verify total token calculation does not exceed `Integer.MAX_VALUE`.
+       - Call `calculateTotalTokens(request)` to verify total token calculation does not exceed `Integer.MAX_VALUE`.
      - Business Logic:
-       - Determine `now` from injected UTC `Clock`.
-       - Derive current UTC date and current month start/end.
-       - Load customer using `findByIdForUpdate`.
-       - If missing, throw `CustomerNotFoundException`.
-       - Load the active subscription for the customer and current date by calling `findActiveSubscription(...).orElseThrow(...)`.
-       - If none exists, throw `NoActiveSubscriptionException`.
-       - Read pricing plan quota and overage rate from that subscription.
-       - Sum current-month usage from existing bills.
+       - Capture `now` from injected UTC `Clock`.
+       - Call `validateCustomerExists(request.customerId())` to load and lock the customer.
+       - Call `resolveActivePricingPlan(customer.id())` to obtain the active pricing plan.
+       - Call `calculateRemainingQuota(customer.id(), plan)` to derive remaining monthly quota from current-month bill usage.
+       - Derive the usage value passed into `BillingCalculation.calculate(...)` from plan quota and remaining quota so the existing calculation contract remains unchanged.
        - Calculate quota tokens, overage tokens, and total charge.
        - Create and save a bill.
        - Return `BillResponse.from(savedBill)`.
@@ -429,6 +429,27 @@ Only the first three items are application layers; the remaining items are suppo
        - Let unexpected persistence/system failures propagate to the global handler.
      - Return Value:
        - Return a response containing bill ID, customer ID, total tokens, quota tokens, overage tokens, total charge, and timestamp.
+   - `validateCustomerExists(String customerId): Customer`
+     - Logic:
+       - Load the customer with `findByIdForUpdate(customerId)`.
+       - Throw `CustomerNotFoundException` when the customer does not exist.
+       - Return the locked customer domain model.
+   - `resolveActivePricingPlan(String customerId): PricingPlan`
+     - Logic:
+       - Use `LocalDate.now(clock)` as the current UTC date.
+       - Load the active subscription with `findActiveSubscription(customerId, currentDate).orElseThrow(...)`.
+       - Throw `NoActiveSubscriptionException` when no active subscription exists.
+       - Return the pricing plan from the active subscription.
+   - `calculateRemainingQuota(String customerId, PricingPlan plan): long`
+     - Logic:
+       - Use `LocalDate.now(clock)` to derive the current UTC month window.
+       - Sum current-month usage with `BillRepository.sumTotalTokensForCustomerBetween(customerId, monthStart, monthEnd)`.
+       - Return `max(plan.monthlyQuota - currentMonthUsage, 0)`.
+   - `calculateTotalTokens(UsageRequest request): int`
+     - Logic:
+       - Add prompt and completion tokens using a wide intermediate value.
+       - Throw `BusinessException` with error code `TOKEN_TOTAL_TOO_LARGE` and message `Token total exceeds supported limit` when the total exceeds `Integer.MAX_VALUE`.
+       - Return the total as an integer.
 4. Dependency Injection:
    - Inject `CustomerRepository`, `CustomerSubscriptionRepository`, `BillRepository`, and `Clock` through constructor injection.
    - These repositories are domain-facing interfaces from `repository`, not Spring Data JPA repositories.

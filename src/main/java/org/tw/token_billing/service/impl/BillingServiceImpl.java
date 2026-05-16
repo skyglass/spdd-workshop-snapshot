@@ -8,7 +8,7 @@ import org.tw.token_billing.controller.dto.UsageRequest;
 import org.tw.token_billing.domain.model.Bill;
 import org.tw.token_billing.domain.model.BillingCalculation;
 import org.tw.token_billing.domain.model.Customer;
-import org.tw.token_billing.domain.model.CustomerSubscription;
+import org.tw.token_billing.domain.model.PricingPlan;
 import org.tw.token_billing.exception.BusinessException;
 import org.tw.token_billing.exception.CustomerNotFoundException;
 import org.tw.token_billing.exception.NoActiveSubscriptionException;
@@ -47,32 +47,22 @@ public class BillingServiceImpl implements UsageService {
     @Override
     @Transactional
     public BillResponse submitUsage(UsageRequest request) {
+        return calculateBill(request);
+    }
+
+    private BillResponse calculateBill(UsageRequest request) {
         int totalTokens = calculateTotalTokens(request);
         Instant now = clock.instant();
-        LocalDate currentDate = LocalDate.now(clock);
-        LocalDate monthStartDate = currentDate.withDayOfMonth(1);
-        LocalDateTime monthStart = monthStartDate.atStartOfDay();
-        LocalDateTime monthEnd = monthStartDate.plusMonths(1).atStartOfDay();
-        LocalDateTime calculatedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
-
-        Customer customer = customerRepository.findByIdForUpdate(request.customerId())
-                .orElseThrow(CustomerNotFoundException::new);
-
-        CustomerSubscription activeSubscription = customerSubscriptionRepository
-                .findActiveSubscription(customer.id(), currentDate)
-                .orElseThrow(() -> new NoActiveSubscriptionException(customer.id()));
-
-        long currentMonthUsage = billRepository.sumTotalTokensForCustomerBetween(
-                customer.id(),
-                monthStart,
-                monthEnd
-        );
+        Customer customer = validateCustomerExists(request.customerId());
+        PricingPlan plan = resolveActivePricingPlan(customer.id());
+        long remainingQuota = calculateRemainingQuota(customer.id(), plan);
+        long currentMonthUsageForCalculation = plan.monthlyQuota().longValue() - remainingQuota;
 
         BillingCalculation calculation = BillingCalculation.calculate(
                 totalTokens,
-                currentMonthUsage,
-                activeSubscription.pricingPlan().monthlyQuota(),
-                activeSubscription.pricingPlan().overageRatePer1k()
+                currentMonthUsageForCalculation,
+                plan.monthlyQuota(),
+                plan.overageRatePer1k()
         );
 
         Bill bill = Bill.create(
@@ -80,9 +70,33 @@ public class BillingServiceImpl implements UsageService {
                 request.promptTokens(),
                 request.completionTokens(),
                 calculation,
-                calculatedAt
+                LocalDateTime.ofInstant(now, ZoneOffset.UTC)
         );
         return BillResponse.from(billRepository.save(bill));
+    }
+
+    private Customer validateCustomerExists(String customerId) {
+        return customerRepository.findByIdForUpdate(customerId)
+                .orElseThrow(CustomerNotFoundException::new);
+    }
+
+    private PricingPlan resolveActivePricingPlan(String customerId) {
+        return customerSubscriptionRepository.findActiveSubscription(customerId, LocalDate.now(clock))
+                .orElseThrow(() -> new NoActiveSubscriptionException(customerId))
+                .pricingPlan();
+    }
+
+    private long calculateRemainingQuota(String customerId, PricingPlan plan) {
+        LocalDate currentDate = LocalDate.now(clock);
+        LocalDate monthStartDate = currentDate.withDayOfMonth(1);
+        LocalDateTime monthStart = monthStartDate.atStartOfDay();
+        LocalDateTime monthEnd = monthStartDate.plusMonths(1).atStartOfDay();
+        long currentMonthUsage = billRepository.sumTotalTokensForCustomerBetween(
+                customerId,
+                monthStart,
+                monthEnd
+        );
+        return Math.max(plan.monthlyQuota().longValue() - currentMonthUsage, 0L);
     }
 
     private int calculateTotalTokens(UsageRequest request) {
