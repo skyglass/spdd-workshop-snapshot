@@ -5,7 +5,8 @@ description: Generate SPDD unit and integration tests from a feature structured 
 
 # SPDD Tests
 
-Generate the unit and integration test artifacts for an SPDD feature in one workflow.
+Generate the unit and integration test artifacts for an SPDD feature in one workflow,
+including a duplicate-pruning pass before test code is written.
 The input is a feature implementation prompt, usually:
 
 ```text
@@ -18,10 +19,10 @@ $spdd-tests @./spdd/prompt/GGQPA-XXX-{timestamp}-[Feat]-api-token-usage-billing.
    - Require one `@` reference to a feature structured prompt, acceptance-criteria document, or API implementation context.
    - If no input is provided, ask for the feature prompt path.
    - If a referenced path contains a timestamp placeholder such as `{timestamp}`, resolve it before reading:
-     - Treat `{timestamp}` as a single filename wildcard (`*`) and search for matching files from the current project root.
-     - If exactly one file matches, use that file as the referenced input.
-     - If no files match, stop and report the unresolved pattern.
-     - If multiple files match, stop and ask the user to choose the intended file.
+      - Treat `{timestamp}` as a single filename wildcard (`*`) and search for matching files from the current project root.
+      - If exactly one file matches, use that file as the referenced input.
+      - If no files match, stop and report the unresolved pattern.
+      - If multiple files match, stop and ask the user to choose the intended file.
    - Apply the same single-match resolution for a referenced file pattern that contains shell-style wildcards such as `*`, when the user passes a pattern instead of a concrete filename.
    - Read every referenced file completely.
 
@@ -38,14 +39,19 @@ $spdd-tests @./spdd/prompt/GGQPA-XXX-{timestamp}-[Feat]-api-token-usage-billing.
    - If the input filename does not contain `[Feat]`, write the test prompt under `./spdd/prompt/` with a `[Test]` marker and the same feature slug.
    - Combine the implementation details prompt with the standard template.
    - Inspect existing production code and existing tests before writing scenarios.
-   - When existing tests are present, avoid duplicate scenarios and keep only meaningful new coverage.
+   - Treat existing tests as the baseline. For enhancement prompts, identify the behavioral delta introduced by the feature prompt and list only missing coverage for that delta.
+   - Before saving the prompt, compare candidate scenarios with the relevant existing test classes and remove duplicates or near-duplicates.
+   - If a changed behavior belongs in an existing test class, plan an update to that class instead of creating a parallel duplicate.
+   - When the feature prompt introduces pricing plans, billing strategies/factories, model pricing persistence, or DTO/mapper field changes, include targeted scenarios for those changed surfaces when they exist in the codebase.
    - Save the generated test prompt file before generating test code.
 
 4. Generate unit and integration test code from the test prompt.
    - Read the generated `[Test]` prompt completely.
    - Use the project's existing test stack and conventions.
    - For Java/Spring projects, prefer JUnit 5, Mockito, Spring MockMvc, and Spring Boot test patterns already present in the codebase.
+   - Only add or update tests for scenarios that survived the duplicate-pruning pass in the generated test prompt.
    - Cover controller, service, repository/adapter, mapper/DTO/domain model, and integration scenarios when those layers exist.
+   - Prefer updating existing controller, integration, and service tests when the new behavior naturally belongs there; create new test classes for newly introduced components.
    - Do not add production behavior to make tests pass. If production behavior appears wrong, report that as an SPDD prompt/code issue instead.
    - Add test-only support configuration only when needed, such as `src/test/resources/application.yml` for isolated test datasource setup.
 
@@ -150,6 +156,8 @@ Use this structure when creating `./spdd/template/TEST-SCENARIOS-TEMPLATE.md`:
 - Prefer deterministic test data.
 - Keep tests focused on behavior described by the feature prompt.
 - Avoid duplicate scenarios already covered by existing tests.
+- For enhancement prompts, distinguish new or changed behavior from baseline behavior already covered by existing tests.
+- Prefer updating an existing test class over adding a new class when the scenario belongs to an existing component.
 ```
 
 ## Output
